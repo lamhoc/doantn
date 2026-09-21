@@ -11,7 +11,6 @@ export async function POST(request: Request) {
     const body = await request.json();
     console.log("🔥 ĐÃ NHẬN WEBHOOK TỪ SEPAY:", JSON.stringify(body));
 
-    // Lấy trực tiếp trường code từ Sepay (vd: "DH9138") và số tiền transferAmount
     let orderCode = body.code || '';
     const rawContent = body.content || body.description || '';
     const transferAmount = body.transferAmount || body.amountIn || 0;
@@ -28,63 +27,66 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'Invalid order format' }, { status: 200 });
     }
 
-    const cleanCode = orderCode.replace('_', ''); // Ví dụ: DH9138
-    const withUnderscore = cleanCode.replace('DH', 'DH_'); // Ví dụ: DH_9138
+    const cleanCode = orderCode.replace('_', ''); // Ví dụ: DH5463
+    const withUnderscore = cleanCode.replace('DH', 'DH_'); // Ví dụ: DH_5463
 
-    console.log("🔍 Đang tìm đơn hàng trong DB với các mã:", cleanCode, "hoặc", withUnderscore, "Số tiền:", transferAmount);
+    console.log("🔍 Đang tìm đơn hàng trong DB với mã chuẩn:", cleanCode, "Số tiền:", transferAmount);
 
+    // Truy vấn trực tiếp không ràng buộc status để check xem đơn có tồn tại không
     let targetOrder = null;
 
-    // 1. Tìm theo ID chính xác (dạng DH9138)
-    let { data: orderById } = await supabase
+    // 1. Tìm theo ID chính xác
+    let { data: orderById, error: err1 } = await supabase
       .from('orders')
       .select('*')
-      .eq('status', 'pending')
       .eq('id', cleanCode)
       .maybeSingle();
 
     if (orderById) {
       targetOrder = orderById;
+      console.log("📌 Tìm thấy qua ID chính xác:", targetOrder);
     } else {
-      // 2. Thử tìm ID dạng có gạch dưới (DH_9138)
-      let { data: orderByIdUnderscore } = await supabase
+      // 2. Tìm theo ID có gạch dưới
+      let { data: orderByIdUnder, error: err2 } = await supabase
         .from('orders')
         .select('*')
-        .eq('status', 'pending')
         .eq('id', withUnderscore)
         .maybeSingle();
-      
-      if (orderByIdUnderscore) {
-        targetOrder = orderByIdUnderscore;
+
+      if (orderByIdUnder) {
+        targetOrder = orderByIdUnder;
+        console.log("📌 Tìm thấy qua ID có gạch dưới:", targetOrder);
       } else {
-        // 3. Tìm trong nội dung cột content
-        let { data: orderByContent } = await supabase
+        // 3. Tìm gần đúng trong cột content
+        let { data: orderByContent, error: err3 } = await supabase
           .from('orders')
           .select('*')
-          .eq('status', 'pending')
           .ilike('content', `%${cleanCode}%`)
           .limit(1);
 
         if (orderByContent && orderByContent.length > 0) {
           targetOrder = orderByContent[0];
+          console.log("📌 Tìm thấy qua cột content:", targetOrder);
+        } else {
+          console.log("❌ Supabase trả về lỗi (nếu có):", { err1, err2, err3 });
         }
       }
     }
 
     if (!targetOrder) {
-      console.log("⚠️ Vẫn không tìm thấy đơn hàng khớp trong DB!");
+      console.log("⚠️ Tuyệt đối không tìm thấy đơn hàng nào khớp với mã:", cleanCode, "trong bảng orders!");
       return NextResponse.json({ success: true, message: 'Order not found' }, { status: 200 });
     }
 
-    console.log("✅ Đã tìm thấy đơn hàng:", targetOrder.id);
+    console.log("✅ Đã chốt đơn hàng ID:", targetOrder.id, "| Trạng thái hiện tại:", targetOrder.status);
 
-    // Kiểm tra số tiền thanh toán dựa trên transferAmount
+    // Kiểm tra số tiền thanh toán
     if (Number(transferAmount) < Number(targetOrder.total_amount)) {
       console.log(`⚠️ Số tiền chuyển (${transferAmount}) nhỏ hơn tổng đơn (${targetOrder.total_amount})`);
       return NextResponse.json({ success: true, message: 'Insufficient amount' }, { status: 200 });
     }
 
-    // Cập nhật trạng thái đơn hàng thành 'paid' trong Supabase
+    // Cập nhật trạng thái đơn hàng thành 'paid'
     const { error: updateError } = await supabase
       .from('orders')
       .update({ 
@@ -98,7 +100,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'Database error' }, { status: 200 });
     }
 
-    console.log(`✅ Đơn hàng ${targetOrder.id} đã thanh toán thành công qua Sepay!`);
+    console.log(`🎉 HOÀN TẤT! Đơn hàng ${targetOrder.id} đã được cập nhật thành PAID!`);
 
     return NextResponse.json({ 
       success: true, 
