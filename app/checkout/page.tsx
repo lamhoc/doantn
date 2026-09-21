@@ -54,7 +54,7 @@ export default function CheckoutPage() {
 
   const handleCreateOrder = async () => {
     setLoading(true);
-    const amount = 10000;
+    const amount = 75000;
     const randomCode = Math.floor(1000 + Math.random() * 9000);
     const content = `DH_${randomCode}`;
 
