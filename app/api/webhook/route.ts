@@ -11,39 +11,73 @@ export async function POST(request: Request) {
     const body = await request.json();
     console.log("🔥 ĐÃ NHẬN WEBHOOK TỪ SEPAY:", JSON.stringify(body));
 
-    // Lấy chuỗi mô tả giao dịch từ Sepay
+    // Lấy trực tiếp trường code từ Sepay (vd: "DH9138"), nếu không có mới bóc tách từ content/description
+    let orderCode = body.code || '';
     const rawContent = body.content || body.description || '';
     const transferAmount = body.transferAmount || body.amountIn || 0;
 
-    if (!rawContent) {
-      return NextResponse.json({ success: true, message: 'No content found' }, { status: 200 });
+    if (!orderCode && rawContent) {
+      const match = rawContent.match(/DH[_]?\d+/i);
+      if (match) {
+        orderCode = match[0];
+      }
     }
 
-    // Dùng Regex linh hoạt để bắt cả "DH5898" lẫn "DH_5898"
-    const match = rawContent.match(/DH[_]?\d+/i);
-    if (!match) {
-      console.log("⚠️ Không tìm thấy định dạng mã đơn hàng trong nội dung:", rawContent);
+    if (!orderCode) {
+      console.log("⚠️ Không tìm thấy mã đơn hàng trong payload!");
       return NextResponse.json({ success: true, message: 'Invalid order format' }, { status: 200 });
     }
 
-    const cleanCode = match[0].replace('_', ''); // Ví dụ: DH5898
-    const withUnderscore = cleanCode.replace('DH', 'DH_'); // Ví dụ: DH_5898
+    const cleanCode = orderCode.replace('_', ''); // Ví dụ: DH9138
+    const withUnderscore = cleanCode.replace('DH', 'DH_'); // Ví dụ: DH_9138
 
-    console.log("🔍 Mã đơn tìm kiếm trong DB:", cleanCode, "hoặc", withUnderscore, "Số tiền:", transferAmount);
+    console.log("🔍 Đang tìm đơn hàng trong DB với các mã:", cleanCode, "hoặc", withUnderscore, "Số tiền:", transferAmount);
 
-    // Tìm kiếm linh hoạt cả hai dạng trong Supabase (cả cột id và cột content)
-    const { data: orders, error: fetchError } = await supabase
+    // Truy vấn lần lượt an toàn không dùng điều kiện .or() phức tạp
+    let targetOrder = null;
+
+    // 1. Tìm theo ID chính xác (dạng DH9138)
+    let { data: orderById } = await supabase
       .from('orders')
       .select('*')
       .eq('status', 'pending')
-      .or(`content.ilike.%${cleanCode}%,content.ilike.%${withUnderscore}%,id.eq.${cleanCode},id.eq.${withUnderscore}`);
+      .eq('id', cleanCode)
+      .maybeSingle();
 
-    if (fetchError || !orders || orders.length === 0) {
-      console.log("⚠️ Không tìm thấy đơn hàng khớp trong DB với các mã trên!");
+    if (orderById) {
+      targetOrder = orderById;
+    } else {
+      // 2. Thử tìm ID dạng có gạch dưới (DH_9138)
+      let { data: orderByIdUnderscore } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('status', 'pending')
+        .eq('id', withUnderscore)
+        .maybeSingle();
+      
+      if (orderByIdUnderscore) {
+        targetOrder = orderByIdUnderscore;
+      } else {
+        // 3. Tìm trong nội dung cột content
+        let { data: orderByContent } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('status', 'pending')
+          .ilike('content', `%${cleanCode}%`)
+          .limit(1);
+
+        if (orderByContent && orderByContent.length > 0) {
+          targetOrder = orderByContent[0];
+        }
+      }
+    }
+
+    if (!targetOrder) {
+      console.log("⚠️ Vẫn không tìm thấy đơn hàng khớp trong DB!");
       return NextResponse.json({ success: true, message: 'Order not found' }, { status: 200 });
     }
 
-    const targetOrder = orders[0];
+    console.log("✅ Đã tìm thấy đơn hàng:", targetOrder.id);
 
     // Kiểm tra số tiền thanh toán
     if (Number(transferAmount) < Number(targetOrder.total_amount)) {
