@@ -9,13 +9,21 @@ const supabase = createClient(
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    console.log("🔥 ĐÃ NHẬN WEBHOOK TỪ APP TRUNG GIAN:", body);
+    console.log("🔥 ĐÃ NHẬN WEBHOOK TỪ PAYOS:", JSON.stringify(body));
 
-    const rawContent = body.content || body.description || '';
-    const transferAmount = body.transferAmount || body.amountIn || 0;
+    // 1. Phản hồi nhanh mã 200 cho payOS ngay lập tức (Rất quan trọng để qua bước test URL của payOS)
+    // payOS chuẩn cấu trúc trả về thường có object 'data' chứa thông tin giao dịch hoặc dùng cho test ping
+    if (body.success === false || !body.data) {
+      console.log("⚠️ Webhook test hoặc dữ liệu không hợp lệ từ payOS, trả về 200 OK để xác nhận URL hoạt động.");
+      return NextResponse.json({ success: true, message: 'Webhook received' }, { status: 200 });
+    }
+
+    const txData = body.data;
+    const rawContent = txData.description || '';
+    const transferAmount = txData.amount || 0;
 
     if (!rawContent) {
-      return NextResponse.json({ success: false, message: 'Thiếu nội dung chuyển khoản' }, { status: 400 });
+      return NextResponse.json({ success: true, message: 'Không tìm thấy nội dung giao dịch' }, { status: 200 });
     }
 
     // Tự động tìm đoạn mã dạng DH_xxxx nằm trong nội dung chuyển khoản
@@ -33,7 +41,8 @@ export async function POST(request: Request) {
 
     if (fetchError || !orders || orders.length === 0) {
       console.log("⚠️ Không tìm thấy đơn hàng khớp với mã:", orderCode);
-      return NextResponse.json({ success: false, message: 'Không tìm thấy đơn hàng' }, { status: 404 });
+      // Vẫn trả về 200 để payOS không gọi lại liên tục (retry)
+      return NextResponse.json({ success: true, message: 'Không tìm thấy đơn hàng phù hợp' }, { status: 200 });
     }
 
     const targetOrder = orders[0];
@@ -41,7 +50,7 @@ export async function POST(request: Request) {
     // Kiểm tra số tiền
     if (Number(transferAmount) < Number(targetOrder.total_amount)) {
       console.log(`⚠️ Số tiền chuyển (${transferAmount}) nhỏ hơn tổng đơn (${targetOrder.total_amount})`);
-      return NextResponse.json({ success: false, message: 'Số tiền thanh toán không đủ' }, { status: 400 });
+      return NextResponse.json({ success: true, message: 'Số tiền thanh toán không đủ' }, { status: 200 });
     }
 
     // Update trạng thái thành 'paid'
@@ -64,10 +73,11 @@ export async function POST(request: Request) {
       success: true, 
       message: 'Xác nhận thanh toán thành công',
       orderId: targetOrder.id 
-    });
+    }, { status: 200 });
 
   } catch (error: any) {
     console.error('❌ Lỗi xử lý Webhook:', error.message);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    // Luôn trả về 200 hoặc cấu trúc an toàn để tránh payOS bị lỗi 500/400 liên tục nếu request rác
+    return NextResponse.json({ success: true, message: error.message }, { status: 200 });
   }
 }
