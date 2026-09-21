@@ -20,7 +20,7 @@ export default function CheckoutPage() {
 
   const [copied, setCopied] = useState(false);
 
-  const BANK_ID = 'MB Bank';
+  const BANK_ID = 'MB';
   const ACCOUNT_NO = '0969654011';
   const ACCOUNT_NAME = 'LAM THAI HOC';
 
@@ -71,7 +71,8 @@ export default function CheckoutPage() {
       return;
     }
 
-   const qrUrl = `https://img.vietqr.io/image/MB-${accountNo}-compact2.png?amount=${amount}&addInfo=${orderCode}&accountName=${accountName}`;
+    // Đã sửa lại đúng tên hằng số ACCOUNT_NO
+    const qrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.png?amount=${amount}&addInfo=${content}&accountName=${ACCOUNT_NAME}`;
 
     setOrderInfo({
       orderId: data.id,
@@ -131,7 +132,7 @@ export default function CheckoutPage() {
             <div className="bg-gray-100 p-4 rounded-xl space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-600">Ngân hàng:</span>
-                <span className="font-bold">Vietcombank (VCB)</span>
+                <span className="font-bold">MB Bank (Quân Đội)</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-600">Số tài khoản:</span>
