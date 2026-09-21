@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     console.log("🔥 ĐÃ NHẬN WEBHOOK TỪ SEPAY:", JSON.stringify(body));
 
-    // Lấy trực tiếp trường code từ Sepay (vd: "DH9138"), nếu không có mới bóc tách từ content/description
+    // Lấy trực tiếp trường code từ Sepay (vd: "DH9138") và số tiền transferAmount
     let orderCode = body.code || '';
     const rawContent = body.content || body.description || '';
     const transferAmount = body.transferAmount || body.amountIn || 0;
@@ -33,7 +33,6 @@ export async function POST(request: Request) {
 
     console.log("🔍 Đang tìm đơn hàng trong DB với các mã:", cleanCode, "hoặc", withUnderscore, "Số tiền:", transferAmount);
 
-    // Truy vấn lần lượt an toàn không dùng điều kiện .or() phức tạp
     let targetOrder = null;
 
     // 1. Tìm theo ID chính xác (dạng DH9138)
@@ -79,7 +78,7 @@ export async function POST(request: Request) {
 
     console.log("✅ Đã tìm thấy đơn hàng:", targetOrder.id);
 
-    // Kiểm tra số tiền thanh toán
+    // Kiểm tra số tiền thanh toán dựa trên transferAmount
     if (Number(transferAmount) < Number(targetOrder.total_amount)) {
       console.log(`⚠️ Số tiền chuyển (${transferAmount}) nhỏ hơn tổng đơn (${targetOrder.total_amount})`);
       return NextResponse.json({ success: true, message: 'Insufficient amount' }, { status: 200 });
