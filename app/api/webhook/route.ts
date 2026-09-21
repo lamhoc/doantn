@@ -19,27 +19,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'No content found' }, { status: 200 });
     }
 
-    // Dùng Regex linh hoạt để bắt cả "DH2532" lẫn "DH_2532"
+    // Dùng Regex linh hoạt để bắt cả "DH5898" lẫn "DH_5898"
     const match = rawContent.match(/DH[_]?\d+/i);
     if (!match) {
       console.log("⚠️ Không tìm thấy định dạng mã đơn hàng trong nội dung:", rawContent);
       return NextResponse.json({ success: true, message: 'Invalid order format' }, { status: 200 });
     }
 
-    // Chuẩn hóa về dạng khớp với database (vd: bỏ dấu gạch dưới nếu có, hoặc giữ nguyên tùy cấu trúc bảng)
-    const orderCode = match[0]; // Giữ nguyên khớp với cột content (DH2532)
+    const cleanCode = match[0].replace('_', ''); // Ví dụ: DH5898
+    const withUnderscore = cleanCode.replace('DH', 'DH_'); // Ví dụ: DH_5898
 
-    console.log("🔍 Mã đơn trích xuất thành công:", orderCode, "Số tiền:", transferAmount);
+    console.log("🔍 Mã đơn tìm kiếm trong DB:", cleanCode, "hoặc", withUnderscore, "Số tiền:", transferAmount);
 
-    // Tìm đơn hàng đang chờ thanh toán trong Supabase (so khớp cả cột id hoặc content)
+    // Tìm kiếm linh hoạt cả hai dạng trong Supabase (cả cột id và cột content)
     const { data: orders, error: fetchError } = await supabase
       .from('orders')
       .select('*')
       .eq('status', 'pending')
-      .or(`content.ilike.%${orderCode}%,id.eq.${orderCode}`);
+      .or(`content.ilike.%${cleanCode}%,content.ilike.%${withUnderscore}%,id.eq.${cleanCode},id.eq.${withUnderscore}`);
 
     if (fetchError || !orders || orders.length === 0) {
-      console.log("⚠️ Không tìm thấy đơn hàng khớp trong DB với mã:", orderCode);
+      console.log("⚠️ Không tìm thấy đơn hàng khớp trong DB với các mã trên!");
       return NextResponse.json({ success: true, message: 'Order not found' }, { status: 200 });
     }
 
