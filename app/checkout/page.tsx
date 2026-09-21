@@ -20,8 +20,8 @@ export default function CheckoutPage() {
 
   const [copied, setCopied] = useState(false);
 
-  const BANK_ID = 'VCB';
-  const ACCOUNT_NO = '9969654011';
+  const BANK_ID = 'MB';
+  const ACCOUNT_NO = '0969654011';
   const ACCOUNT_NAME = 'LAM THAI HOC';
 
   // Lắng nghe thay đổi realtime từ Supabase cho đơn hàng hiện tại
