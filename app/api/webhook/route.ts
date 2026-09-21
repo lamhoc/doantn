@@ -11,8 +11,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     console.log("🔥 ĐÃ NHẬN WEBHOOK TỪ SEPAY:", JSON.stringify(body));
 
-    // Sepay gửi dữ liệu giao dịch trực tiếp trong body hoặc body.content
-    // Các trường chuẩn của Sepay: content (nội dung ck), transferAmount / amountIn (số tiền)
+    // Lấy chuỗi mô tả giao dịch từ Sepay
     const rawContent = body.content || body.description || '';
     const transferAmount = body.transferAmount || body.amountIn || 0;
 
@@ -20,27 +19,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'No content found' }, { status: 200 });
     }
 
-    // Trích xuất mã đơn hàng dạng DH_xxxx từ nội dung chuyển khoản
-    const match = rawContent.match(/DH_\d+/i);
-    const orderCode = match ? match[0] : rawContent.trim();
+    // Dùng Regex linh hoạt để bắt cả "DH2532" lẫn "DH_2532"
+    const match = rawContent.match(/DH[_]?\d+/i);
+    if (!match) {
+      console.log("⚠️ Không tìm thấy định dạng mã đơn hàng trong nội dung:", rawContent);
+      return NextResponse.json({ success: true, message: 'Invalid order format' }, { status: 200 });
+    }
 
-    console.log("🔍 Mã đơn trích xuất từ nội dung:", orderCode, "Số tiền:", transferAmount);
+    // Chuẩn hóa về dạng khớp với database (vd: bỏ dấu gạch dưới nếu có, hoặc giữ nguyên tùy cấu trúc bảng)
+    const orderCode = match[0]; // Giữ nguyên khớp với cột content (DH2532)
 
-    // Tìm đơn hàng đang chờ thanh toán trong Supabase
+    console.log("🔍 Mã đơn trích xuất thành công:", orderCode, "Số tiền:", transferAmount);
+
+    // Tìm đơn hàng đang chờ thanh toán trong Supabase (so khớp cả cột id hoặc content)
     const { data: orders, error: fetchError } = await supabase
       .from('orders')
       .select('*')
       .eq('status', 'pending')
-      .or(`id.eq.${orderCode},content.ilike.%${orderCode}%`);
+      .or(`content.ilike.%${orderCode}%,id.eq.${orderCode}`);
 
     if (fetchError || !orders || orders.length === 0) {
-      console.log("⚠️ Không tìm thấy đơn hàng khớp với:", orderCode);
+      console.log("⚠️ Không tìm thấy đơn hàng khớp trong DB với mã:", orderCode);
       return NextResponse.json({ success: true, message: 'Order not found' }, { status: 200 });
     }
 
     const targetOrder = orders[0];
 
-    // Kiểm tra số tiền thanh toán (có thể nới lỏng hoặc check chính xác)
+    // Kiểm tra số tiền thanh toán
     if (Number(transferAmount) < Number(targetOrder.total_amount)) {
       console.log(`⚠️ Số tiền chuyển (${transferAmount}) nhỏ hơn tổng đơn (${targetOrder.total_amount})`);
       return NextResponse.json({ success: true, message: 'Insufficient amount' }, { status: 200 });
