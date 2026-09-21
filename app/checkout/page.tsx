@@ -71,7 +71,7 @@ export default function CheckoutPage() {
       return;
     }
 
-    const qrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.png?amount=${amount}&addInfo=${content}&accountName=${encodeURIComponent(ACCOUNT_NAME)}`;
+   const qrUrl = `https://img.vietqr.io/image/MB-${accountNo}-compact2.png?amount=${amount}&addInfo=${orderCode}&accountName=${accountName}`;
 
     setOrderInfo({
       orderId: data.id,
