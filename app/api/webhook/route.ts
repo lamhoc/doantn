@@ -28,19 +28,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'Invalid order format' }, { status: 200 });
     }
 
-    const cleanCode = orderCode.replace('_', ''); // Ví dụ: DH4506
+    // Xử lý thông minh: Chuyển mã không gạch dưới từ bank (vd: DH2130) 
+    // thành dạng có gạch dưới để khớp với DB (vd: DH_2130)
+    const cleanCode = orderCode.replace('_', ''); // Đảm bảo sạch gạch dưới trước: DH2130
+    const dbFormatCode = cleanCode.replace(/^([A-Za-z]+)(\d+)$/, '$1_$2'); // Chuyển thành: DH_2130
 
-    console.log("🔍 Đang tìm đơn hàng trong DB với mã tại cột content:", cleanCode, "Số tiền:", transferAmount);
+    console.log("🔍 Tìm kiếm trong cột content với định dạng DB:", dbFormatCode, "Số tiền:", transferAmount);
 
-    // Truy vấn tìm đơn hàng có chứa mã trong cột content
+    // Truy vấn tìm đơn hàng có cột content chứa mã dạng "DH_2130" (hoặc quét cả dạng không gạch dưới đề phòng)
     const { data: orders, error: fetchError } = await supabase
       .from('orders')
       .select('*')
-      .ilike('content', `%${cleanCode}%`)
+      .or(`content.ilike.%${dbFormatCode}%,content.ilike.%${cleanCode}%`)
       .limit(1);
 
     if (fetchError || !orders || orders.length === 0) {
-      console.log("⚠️ Không tìm thấy đơn hàng nào có content chứa mã:", cleanCode);
+      console.log("⚠️ Không tìm thấy đơn hàng nào có content chứa mã:", dbFormatCode);
       return NextResponse.json({ success: true, message: 'Order not found' }, { status: 200 });
     }
 
@@ -60,14 +63,14 @@ export async function POST(request: Request) {
         status: 'paid', 
         updated_at: new Date().toISOString() 
       })
-      .eq('id', targetOrder.id); // Dùng khóa chính id của dòng tìm được để update
+      .eq('id', targetOrder.id);
 
     if (updateError) {
       console.error('❌ Lỗi update database:', updateError);
       return NextResponse.json({ success: true, message: 'Database error' }, { status: 200 });
     }
 
-    console.log(`🎉 HOÀN TẤT! Đơn hàng ${targetOrder.id} đã được cập nhật thành công qua cột content!`);
+    console.log(`🎉 HOÀN TẤT! Đơn hàng ${targetOrder.id} đã được cập nhật thành công!`);
 
     return NextResponse.json({ 
       success: true, 
