@@ -20,7 +20,7 @@ export default function CheckoutPage() {
 
   const [copied, setCopied] = useState(false);
 
-  const BANK_ID = 'MB';
+  const BANK_ID = 'MB Bank';
   const ACCOUNT_NO = '0969654011';
   const ACCOUNT_NAME = 'LAM THAI HOC';
 
